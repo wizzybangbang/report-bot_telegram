@@ -56,6 +56,11 @@ REQUIRED_ORDER_FIELDS = [
     "issue encountered:",
 ]
 
+REQUIRED_OTHER_FIELDS = [
+    "subject:",
+    "details:",
+]
+
 class Ping(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -111,7 +116,6 @@ async def get_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     report_type = context.user_data.get("report_type", "Unknown")
-
     report_text = update.message.text or update.message.caption or ""
 
     if report_type == "Order Issue":
@@ -124,6 +128,19 @@ async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 "❌ Please copy and fill out the full form before submitting:\n\n"
                 f"{ORDER_FORM}"
+            )
+            return ASKING_ISSUE
+
+    elif report_type == "Other":
+        missing_fields = [
+            field for field in REQUIRED_OTHER_FIELDS
+            if field.lower() not in report_text.lower()
+        ]
+
+        if missing_fields:
+            await update.message.reply_text(
+                "❌ Please use the correct format:\n\n"
+                f"{OTHER_FORM}"
             )
             return ASKING_ISSUE
 
