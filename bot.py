@@ -8,8 +8,8 @@ from telegram.ext import (
 
 logging.basicConfig(level=logging.INFO)
 
-BOT_TOKEN = os.environ.get("8777636577:AAFgMVErnjcqHzRL36YYUkeJq6oAVhleA-c")
-GROUP_ID = int(os.environ.get("-5122038345"))
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+GROUP_ID = int(os.environ.get("GROUP_ID"))
 
 ASKING_NAME, ASKING_ORDER, ASKING_ISSUE = range(3)
 
