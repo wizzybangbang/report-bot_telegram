@@ -1,12 +1,17 @@
 import os
 import asyncio
 import logging
-import threading
-from flask import Flask
+from threading import Thread
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler,
-    ConversationHandler, ContextTypes, filters,
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ConversationHandler,
+    ContextTypes,
+    filters,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -23,64 +28,117 @@ GROUP_ID = int(GROUP_ID_RAW)
 
 ASKING_TYPE, ASKING_ISSUE = range(2)
 
-web_app = Flask(__name__)
+ORDER_FORM = (
+    "kindly fill this out:\n\n"
+    "account availed:\n"
+    "email/username:\n"
+    "profile/pin if applicable:\n"
+    "date availed:\n"
+    "months availed:\n"
+    "issue encountered:\n\n"
+    "please attach screenshot of the issue + vouch"
+)
 
-@web_app.route("/")
-def home():
-    return "Bot is running!"
+OTHER_FORM = (
+    "Please describe your concern using this format:\n\n"
+    "subject:\n"
+    "details:\n"
+    "proof/screenshots if applicable:\n\n"
+    "Please be as detailed as possible."
+)
 
-def run_web():
-    port = int(os.environ.get("PORT", 10000))
-    web_app.run(host="0.0.0.0", port=port)
+REQUIRED_ORDER_FIELDS = [
+    "account availed:",
+    "email/username:",
+    "profile/pin if applicable:",
+    "date availed:",
+    "months availed:",
+    "issue encountered:",
+]
+
+class Ping(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"alive")
+
+    def log_message(self, *args):
+        pass
+
+def start_ping_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("", port), Ping)
+    server.serve_forever()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [["Order Issue"], ["Other"]]
+
     await update.message.reply_text(
         "Welcome to the support form.\n\nChoose report type:",
         reply_markup=ReplyKeyboardMarkup(
             keyboard,
             resize_keyboard=True,
-            one_time_keyboard=True
-        )
+            one_time_keyboard=True,
+        ),
     )
+
     return ASKING_TYPE
 
 async def get_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     report_type = update.message.text
+
+    if report_type not in ["Order Issue", "Other"]:
+        await update.message.reply_text(
+            "Please choose one of the buttons: Order Issue or Other."
+        )
+        return ASKING_TYPE
+
     context.user_data["report_type"] = report_type
 
     if report_type == "Order Issue":
-        message = (
-            "kindly fill this out:\n\n"
-            "account availed:\n"
-            "email/username:\n"
-            "profile/pin if applicable:\n"
-            "date availed:\n"
-            "months availed:\n"
-            "issue encountered:\n\n"
-            "please attach screenshot of the issue + vouch"
+        await update.message.reply_text(
+            ORDER_FORM,
+            reply_markup=ReplyKeyboardRemove(),
         )
     else:
-        message = (
-            "Please describe your concern using this format:\n\n"
-            "subject:\n"
-            "details:\n"
-            "proof/screenshots if applicable:\n\n"
-            "Please be as detailed as possible."
+        await update.message.reply_text(
+            OTHER_FORM,
+            reply_markup=ReplyKeyboardRemove(),
         )
 
-    await update.message.reply_text(message, reply_markup=ReplyKeyboardRemove())
     return ASKING_ISSUE
 
 async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     report_type = context.user_data.get("report_type", "Unknown")
-    report_text = update.message.text or update.message.caption or "[non-text report submitted]"
+
+    report_text = update.message.text or update.message.caption or ""
+
+    if report_type == "Order Issue":
+        missing_fields = [
+            field for field in REQUIRED_ORDER_FIELDS
+            if field.lower() not in report_text.lower()
+        ]
+
+        if missing_fields:
+            await update.message.reply_text(
+                "❌ Please copy and fill out the full form before submitting:\n\n"
+                f"{ORDER_FORM}"
+            )
+            return ASKING_ISSUE
+
+    if not report_text and not (
+        update.message.photo or update.message.video or update.message.document
+    ):
+        await update.message.reply_text(
+            "❌ Please send a written report or attach proof."
+        )
+        return ASKING_ISSUE
 
     report = (
         "🚨 NEW REPORT\n\n"
         f"📂 Type: {report_type}\n"
-        f"❗ Report:\n{report_text}\n\n"
+        f"❗ Report:\n{report_text or '[media/proof attached]'}\n\n"
         f"🔗 Username: @{user.username or 'no username'}\n"
         f"🆔 User ID: {user.id}"
     )
@@ -91,16 +149,22 @@ async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.forward_message(
             chat_id=GROUP_ID,
             from_chat_id=update.effective_chat.id,
-            message_id=update.message.message_id
+            message_id=update.message.message_id,
         )
 
     await update.message.reply_text("✅ Your report has been submitted successfully.")
+
     context.user_data.clear()
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text("❌ Report cancelled.", reply_markup=ReplyKeyboardRemove())
+
+    await update.message.reply_text(
+        "❌ Report cancelled.",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+
     return ConversationHandler.END
 
 def run_bot():
@@ -112,17 +176,22 @@ def run_bot():
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            ASKING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_type)],
-            ASKING_ISSUE: [MessageHandler(filters.ALL & ~filters.COMMAND, get_issue)],
+            ASKING_TYPE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_type)
+            ],
+            ASKING_ISSUE: [
+                MessageHandler(filters.ALL & ~filters.COMMAND, get_issue)
+            ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True,
     )
 
     app.add_handler(conv)
+
     print("Telegram bot is running...")
     app.run_polling(close_loop=False)
 
 if __name__ == "__main__":
-    threading.Thread(target=run_web, daemon=True).start()
+    Thread(target=start_ping_server, daemon=True).start()
     run_bot()
