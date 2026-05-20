@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 import threading
 from flask import Flask
@@ -67,37 +68,28 @@ async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await context.bot.send_message(chat_id=GROUP_ID, text=report)
-
-    await update.message.reply_text(
-        "✅ Your report has been submitted! We'll get back to you soon."
-    )
+    await update.message.reply_text("✅ Your report has been submitted!")
 
     context.user_data.clear()
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text(
-        "Cancelled.",
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await update.message.reply_text("Cancelled.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 def run_bot():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            ASKING_NAME: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)
-            ],
-            ASKING_ORDER: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_order)
-            ],
-            ASKING_ISSUE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_issue)
-            ],
+            ASKING_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
+            ASKING_ORDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_order)],
+            ASKING_ISSUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_issue)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
@@ -105,7 +97,7 @@ def run_bot():
     app.add_handler(conv)
 
     print("Telegram bot is running...")
-    app.run_polling()
+    app.run_polling(close_loop=False)
 
 if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start()
