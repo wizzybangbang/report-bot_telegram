@@ -4,8 +4,12 @@ import threading
 from flask import Flask
 from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler,
-    ConversationHandler, filters, ContextTypes
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ConversationHandler,
+    ContextTypes,
+    filters,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -18,8 +22,6 @@ if not BOT_TOKEN:
 
 if not GROUP_ID_RAW:
     raise ValueError("GROUP_ID is missing")
-
-print("GROUP_ID_RAW =", GROUP_ID_RAW)
 
 GROUP_ID = int(GROUP_ID_RAW)
 
@@ -36,7 +38,9 @@ def run_web():
     web_app.run(host="0.0.0.0", port=port)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! I'm here to help with order issues.\n\nWhat's your name?")
+    await update.message.reply_text(
+        "Hello! I'm here to help with order issues.\n\nWhat's your name?"
+    )
     return ASKING_NAME
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -56,21 +60,27 @@ async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     report = (
         "🚨 NEW ORDER REPORT\n\n"
         f"👤 Name: {context.user_data['name']}\n"
-        f"📦 Order: {context.user_data['order']}\n"
+        f"📦 Order/Product: {context.user_data['order']}\n"
         f"❗ Issue: {context.user_data['issue']}\n"
         f"🔗 Telegram: @{user.username or 'no username'}\n"
         f"🆔 User ID: {user.id}"
     )
 
     await context.bot.send_message(chat_id=GROUP_ID, text=report)
-    await update.message.reply_text("✅ Your report has been submitted! We'll get back to you soon.")
+
+    await update.message.reply_text(
+        "✅ Your report has been submitted! We'll get back to you soon."
+    )
 
     context.user_data.clear()
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text("Cancelled.", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text(
+        "Cancelled.",
+        reply_markup=ReplyKeyboardRemove()
+    )
     return ConversationHandler.END
 
 def run_bot():
@@ -79,9 +89,15 @@ def run_bot():
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            ASKING_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-            ASKING_ORDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_order)],
-            ASKING_ISSUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_issue)],
+            ASKING_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)
+            ],
+            ASKING_ORDER: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_order)
+            ],
+            ASKING_ISSUE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_issue)
+            ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
@@ -92,5 +108,5 @@ def run_bot():
     app.run_polling()
 
 if __name__ == "__main__":
-    threading.Thread(target=run_bot).start()
-    run_web()
+    threading.Thread(target=run_web, daemon=True).start()
+    run_bot()
