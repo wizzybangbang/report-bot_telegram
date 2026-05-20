@@ -57,7 +57,7 @@ async def get_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["report_type"] = report_type
 
     if report_type == "Order Issue":
-        await update.message.reply_text(
+        message = (
             "kindly fill this out:\n\n"
             "account availed:\n"
             "email/username:\n"
@@ -65,13 +65,19 @@ async def get_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "date availed:\n"
             "months availed:\n"
             "issue encountered:\n\n"
-            "please attach screenshot of the issue + vouch",
-            reply_markup=ReplyKeyboardRemove()
+            "please attach screenshot of the issue + vouch"
         )
-        return ASKING_ISSUE
+    else:
+        message = (
+            "Please describe your concern using this format:\n\n"
+            "subject:\n"
+            "details:\n"
+            "proof/screenshots if applicable:\n\n"
+            "Please be as detailed as possible."
+        )
 
     await update.message.reply_text(
-        "Please describe your concern.",
+        message,
         reply_markup=ReplyKeyboardRemove()
     )
 
@@ -81,10 +87,7 @@ async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     report_type = context.user_data.get("report_type", "Unknown")
 
-    if update.message.text:
-        report_text = update.message.text
-    else:
-        report_text = "[non-text report submitted]"
+    report_text = update.message.text or update.message.caption or "[non-text report submitted]"
 
     report = (
         "🚨 NEW REPORT\n\n"
@@ -96,7 +99,7 @@ async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(chat_id=GROUP_ID, text=report)
 
-    if update.message.photo:
+    if update.message.photo or update.message.video or update.message.document:
         await context.bot.forward_message(
             chat_id=GROUP_ID,
             from_chat_id=update.effective_chat.id,
