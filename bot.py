@@ -94,17 +94,25 @@ async def get_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["report_type"] = report_type
 
     if report_type == "Order Issue":
-        await update.message.reply_text(ORDER_FORM, reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text(
+            ORDER_FORM,
+            reply_markup=ReplyKeyboardRemove(),
+        )
     else:
-        await update.message.reply_text(OTHER_FORM, reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text(
+            OTHER_FORM,
+            reply_markup=ReplyKeyboardRemove(),
+        )
 
     return ASKING_ISSUE
 
 async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = update.effective_user
+        message = update.message
+
         report_type = context.user_data.get("report_type", "Unknown")
-        report_text = update.message.text or update.message.caption or ""
+        report_text = message.text or message.caption or ""
 
         if report_type == "Order Issue":
             missing = [
@@ -113,7 +121,7 @@ async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
 
             if missing:
-                await update.message.reply_text(
+                await message.reply_text(
                     "❌ Please copy and fill out the full form before submitting:\n\n"
                     f"{ORDER_FORM}"
                 )
@@ -126,16 +134,16 @@ async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
 
             if missing:
-                await update.message.reply_text(
+                await message.reply_text(
                     "❌ Please use the correct format:\n\n"
                     f"{OTHER_FORM}"
                 )
                 return ASKING_ISSUE
 
-        if not report_text and not (
-            update.message.photo or update.message.video or update.message.document
-        ):
-            await update.message.reply_text("❌ Please send a written report or attach proof.")
+        has_media = bool(message.photo or message.video or message.document)
+
+        if not report_text and not has_media:
+            await message.reply_text("❌ Please send a written report or attach proof.")
             return ASKING_ISSUE
 
         report = (
@@ -146,39 +154,53 @@ async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🆔 User ID: {user.id}"
         )
 
-        await context.bot.send_message(chat_id=GROUP_ID, text=report)
+        await context.bot.send_message(
+            chat_id=GROUP_ID,
+            text=report,
+        )
 
-        if update.message.photo or update.message.video or update.message.document:
+        if has_media:
             await context.bot.forward_message(
                 chat_id=GROUP_ID,
                 from_chat_id=update.effective_chat.id,
-                message_id=update.message.message_id,
+                message_id=message.message_id,
             )
 
-        await update.message.reply_text("✅ Your report has been submitted successfully.")
+        await message.reply_text("✅ Your report has been submitted successfully.")
+
         context.user_data.clear()
         return ConversationHandler.END
 
-    except Exception as e:
-        logging.exception("Error while submitting report: %s", e)
-        await update.message.reply_text(
-            "⚠️ Something went wrong while submitting your report. Please try again."
-        )
+    except Exception:
+        logging.exception("Error while submitting report")
+
+        if update.message:
+            await update.message.reply_text(
+                "⚠️ Something went wrong while submitting your report. Please try again."
+            )
+
         return ASKING_ISSUE
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text("❌ Report cancelled.", reply_markup=ReplyKeyboardRemove())
+
+    await update.message.reply_text(
+        "❌ Report cancelled.",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+
     return ConversationHandler.END
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logging.exception("Unhandled bot error: %s", context.error)
+    logging.exception("Unhandled bot error", exc_info=context.error)
 
-def run_bot():
+def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[
+            CommandHandler("start", start),
+        ],
         states={
             ASKING_TYPE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_type)
@@ -198,6 +220,7 @@ def run_bot():
     app.add_error_handler(error_handler)
 
     print("Report bot is running...")
+
     app.run_polling(
         allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,
@@ -205,4 +228,4 @@ def run_bot():
 
 if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start()
-    run_bot()
+    main()
