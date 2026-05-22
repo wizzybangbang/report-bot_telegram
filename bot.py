@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 import threading
 from flask import Flask
@@ -108,8 +109,8 @@ async def get_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        user = update.effective_user
         message = update.message
+        user = update.effective_user
 
         report_type = context.user_data.get("report_type", "Unknown")
         report_text = message.text or message.caption or ""
@@ -154,10 +155,7 @@ async def get_issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🆔 User ID: {user.id}"
         )
 
-        await context.bot.send_message(
-            chat_id=GROUP_ID,
-            text=report,
-        )
+        await context.bot.send_message(chat_id=GROUP_ID, text=report)
 
         if has_media:
             await context.bot.forward_message(
@@ -195,12 +193,12 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logging.exception("Unhandled bot error", exc_info=context.error)
 
 def main():
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv = ConversationHandler(
-        entry_points=[
-            CommandHandler("start", start),
-        ],
+        entry_points=[CommandHandler("start", start)],
         states={
             ASKING_TYPE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_type)
@@ -224,6 +222,7 @@ def main():
     app.run_polling(
         allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,
+        close_loop=False,
     )
 
 if __name__ == "__main__":
